@@ -1,0 +1,19 @@
+app:
+  name: "AI Anomaly Detection System"
+  version: "1.0.0"
+  phase: 1  # MVP Phase
+
+logging:
+  level: "INFO"
+  format: "json"
+  rotation: "daily"
+  max_files: 30
+  log_dir: "logs"
+
+ui:
+  theme: "default"
+  language: "ja"
+  font_size: 12
+  window_size:
+    width: 1024
+    height: 768

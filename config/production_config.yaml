@@ -1,0 +1,26 @@
+# Phase1 本番環境設定
+datasets:
+  mvtec:
+    base_path: "datasets/production/mvtec"
+    category: "bottle"  # Phase1制限
+    image_size: [256, 256]
+    
+models:
+  save_path: "models/production"
+  openvino_path: "models/openvino"
+  
+training:
+  # 本番環境では学習を実行しない想定
+  model_name: "patchcore"
+  
+inference:
+  model_format: "openvino"
+  processing_device: "CPU"
+  confidence_threshold: 0.5
+  auto_save_results: true
+  
+paths:
+  data_root: "datasets/production"
+  model_root: "models"
+  log_root: "logs"
+  config_root: "config"
