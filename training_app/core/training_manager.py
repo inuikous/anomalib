@@ -65,8 +65,8 @@ class TrainingManager:
                 model = Padim(backbone="resnet18")
                 model_name = 'padim'
             
-            # ローカル事前学習済み重みをロード
-            self._load_local_backbone(model)
+            # ローカル事前学習済み重みをロード（一時的に無効化）
+            # self._load_local_backbone(model)
             
             total_params = sum(p.numel() for p in model.parameters())
             self.logger.info(f"モデル作成完了: {model_name.upper()}, パラメータ数: {total_params:,}")
@@ -107,6 +107,10 @@ class TrainingManager:
             self.logger.error(f"ローカル重みロードエラー: {e}")
             raise RuntimeError(f"事前学習済みモデルの読み込みに失敗しました: {e}")
     
+    def create_datamodule(self) -> MVTecAD:
+        """データモジュール作成（setup_datasetのエイリアス）"""
+        return self.setup_dataset()
+    
     def setup_dataset(self) -> MVTecAD:
         """データセット準備"""
         self.logger.info(f"データセット準備開始: {self.category}")
@@ -116,7 +120,7 @@ class TrainingManager:
             "category": self.category,
             "train_batch_size": 16,
             "eval_batch_size": 16,
-            "num_workers": 0,  # Windows対応
+            "num_workers": 4,  # パフォーマンス向上
             "test_split_mode": "from_dir",
             "val_split_mode": "same_as_test",
             "val_split_ratio": 0.2,
@@ -196,28 +200,19 @@ class TrainingManager:
         callbacks = []
         if self.progress_callback:
             callbacks.append(self._create_progress_callback())
-        
-        # チェックポイント設定
+
+        # Engine作成（anomalib内部でModelCheckpointが自動設定される）
         checkpoint_dir = Path("./models/development/checkpoints")
         checkpoint_dir.mkdir(parents=True, exist_ok=True)
         
-        model_checkpoint = ModelCheckpoint(
-            dirpath=str(checkpoint_dir),
-            filename="model-{epoch:02d}-{val_loss:.2f}",
-            save_top_k=1,
-            monitor="val_loss",
-            mode="min"
-        )
-        callbacks.append(model_checkpoint)
-        
-        # Engine作成
         engine = Engine(
             logger=False,
             max_epochs=self.config.get('training.max_epochs', 10),
             accelerator="gpu" if self.device == "cuda" else "cpu",
             devices=1,
             callbacks=callbacks,
-            enable_progress_bar=False
+            enable_progress_bar=False,
+            default_root_dir=str(checkpoint_dir.parent)
         )
         
         # 学習実行

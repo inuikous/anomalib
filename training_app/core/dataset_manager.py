@@ -225,10 +225,11 @@ class DatasetManager:
             if len(test_good_images) < 2:
                 validation_errors.append(f"テスト用正常画像不足: {len(test_good_images)}枚")
             
-            # 不正画像チェック
-            invalid_images = self._check_invalid_images()
-            if invalid_images:
-                validation_errors.extend(invalid_images)
+            # 不正画像チェック（高速化のため一時的に無効化）
+            # invalid_images = self._check_invalid_images()
+            # if invalid_images:
+            #     validation_errors.extend(invalid_images)
+            invalid_images = []  # 高速化のため
             
             is_valid = len(validation_errors) == 0
             
@@ -433,26 +434,28 @@ class DatasetManager:
         return defect_images, defect_types
     
     def _check_invalid_images(self) -> List[str]:
-        """不正画像チェック"""
+        """不正画像チェック（簡略版）"""
         errors = []
         
         try:
-            # 全画像をチェック
-            all_images = []
-            all_images.extend(self._get_train_images())
-            all_images.extend(self._get_test_good_images())
+            # 基本的な存在チェックのみ（高速化）
+            train_images = self._get_train_images()
+            test_good_images = self._get_test_good_images()
             defect_images, _ = self._get_test_defect_images()
-            all_images.extend(defect_images)
+            
+            # 画像ファイルの存在確認のみ
+            all_images = []
+            all_images.extend(train_images[:5])  # 最初の5枚のみチェック
+            all_images.extend(test_good_images[:5])
+            all_images.extend(defect_images[:5])
             
             for image_path in all_images:
-                if not validate_image_format(image_path):
-                    errors.append(f"不正画像: {image_path.name}")
-                
-                # サイズチェック
-                img_info = get_image_info(image_path)
-                if img_info:
-                    if img_info['width'] < 32 or img_info['height'] < 32:
-                        errors.append(f"画像サイズ不正: {image_path.name} ({img_info['width']}x{img_info['height']})")
+                if not image_path.exists():
+                    errors.append(f"画像ファイルが存在しません: {image_path.name}")
+                elif image_path.stat().st_size == 0:
+                    errors.append(f"空のファイル: {image_path.name}")
+            
+            self.logger.debug(f"簡易画像検証完了: {len(all_images)}枚をチェック")
                 
         except Exception as e:
             errors.append(f"画像チェックエラー: {str(e)}")

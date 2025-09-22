@@ -293,11 +293,20 @@ class ModelManager:
             }
             
             # テスト結果から精度を抽出
-            test_results = training_results.get("test_results", {})
-            if isinstance(test_results, dict):
-                for key in ["AUROC", "auroc", "AUC", "auc"]:
+            test_results = training_results.get("test_results", [])
+            if isinstance(test_results, list) and len(test_results) > 0:
+                # 配列の場合は最初の要素から精度を取得
+                test_result = test_results[0]
+                if "image_AUROC" in test_result:
+                    metadata["accuracy"] = float(test_result["image_AUROC"])
+                elif "pixel_AUROC" in test_result:
+                    metadata["accuracy"] = float(test_result["pixel_AUROC"])
+            elif isinstance(test_results, dict):
+                # 辞書の場合
+                for key in ["image_AUROC", "AUROC", "auroc", "AUC", "auc"]:
                     if key in test_results:
                         metadata["accuracy"] = float(test_results[key])
+                        break
                         break
             
             # メタデータ保存
@@ -344,9 +353,21 @@ class ModelManager:
                             
                             # テスト結果から精度を取得
                             if "training_results" in metadata:
-                                test_results = metadata["training_results"].get("test_results", {})
-                                if "auroc" in test_results:
+                                training_results = metadata["training_results"]
+                                test_results = training_results.get("test_results", [])
+                                
+                                # test_resultsが配列の場合は最初の要素を使用
+                                if isinstance(test_results, list) and len(test_results) > 0:
+                                    test_result = test_results[0]
+                                    # image_AUROCを精度として使用
+                                    if "image_AUROC" in test_result:
+                                        metadata["accuracy"] = test_result["image_AUROC"]
+                                elif isinstance(test_results, dict) and "auroc" in test_results:
                                     metadata["accuracy"] = test_results["auroc"]
+                                
+                                # model_typeを設定
+                                model_name = training_results.get("model_name", "unknown")
+                                metadata["model_type"] = model_name.upper()  # padim -> PADIM
                             
                             model_info = ModelInfo.from_dict(metadata)
                             models.append(model_info)

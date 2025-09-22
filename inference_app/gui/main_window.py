@@ -14,7 +14,9 @@ sys.path.insert(0, str(project_root))
 
 from shared.config import get_config_manager
 from shared.utils import setup_logger
-from ..core import ImageManager, AnomalyDetector, ResultManager
+from inference_app.core.image_manager import ImageManager
+from inference_app.core.anomaly_detector import AnomalyDetector
+from inference_app.core.result_manager import ResultManager
 from .image_view import ImageView
 from .result_view import ResultView
 

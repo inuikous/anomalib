@@ -13,10 +13,10 @@ import tkinter as tk
 from tkinter import messagebox
 
 from shared.utils import setup_logger
-from gui.main_window import InferenceMainWindow
-from core.image_manager import ImageManager
-from core.anomaly_detector import AnomalyDetector
-from core.result_manager import ResultManager
+from inference_app.gui.main_window import InferenceMainWindow
+from inference_app.core.image_manager import ImageManager
+from inference_app.core.anomaly_detector import AnomalyDetector
+from inference_app.core.result_manager import ResultManager
 
 
 class InferenceApp:
@@ -54,32 +54,14 @@ class InferenceApp:
     def run(self):
         """アプリケーション実行"""
         try:
-            # Tkinterルート作成
-            self.root = tk.Tk()
-            self.root.title("異常検出システム - 推論")
-            self.root.geometry("1200x800")
-            
-            # アイコン設定（存在する場合）
-            try:
-                self.root.iconbitmap(default="app.ico")
-            except:
-                pass  # アイコンがない場合は無視
-            
-            # メインウィンドウ作成
-            self.main_window = InferenceMainWindow(
-                self.root,
-                self.image_manager,
-                self.anomaly_detector,
-                self.result_manager
-            )
-            
-            # 終了時処理設定
-            self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+            # メインウィンドウ作成と表示
+            self.main_window = InferenceMainWindow(self.config_manager)
+            self.main_window.create_window()
             
             self.logger.info("推論アプリ開始")
             
             # イベントループ開始
-            self.root.mainloop()
+            self.main_window.root.mainloop()
             
         except Exception as e:
             self.logger.error(f"推論アプリ実行エラー: {e}")

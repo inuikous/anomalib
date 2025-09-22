@@ -620,9 +620,24 @@ class TrainingMainWindow:
                     # ModelInfoオブジェクト
                     model_id = model.model_id
                     name = model.name
+                    # metadataからmodel_typeを取得、なければunknownから推測
                     model_type = model.metadata.get('model_type', 'Unknown')
+                    if model_type == 'Unknown' and hasattr(model, 'model_id'):
+                        # model_idから推測 (例: hazelnut_20250923_011324)
+                        if 'padim' in name.lower():
+                            model_type = 'PADIM'
+                        elif 'patchcore' in name.lower():
+                            model_type = 'PatchCore'
+                        elif 'fastflow' in name.lower():
+                            model_type = 'FastFlow'
+                    
                     created_at = model.created_at.strftime('%Y-%m-%d %H:%M') if hasattr(model.created_at, 'strftime') else str(model.created_at)
-                    accuracy = f"{model.accuracy:.3f}" if model.accuracy else "N/A"
+                    
+                    # 精度の表示改善
+                    if model.accuracy and model.accuracy > 0:
+                        accuracy = f"{model.accuracy:.3f}"
+                    else:
+                        accuracy = "N/A"
                 else:
                     # 辞書形式（後方互換性）
                     model_id = model.get("model_id", "Unknown")

@@ -23,10 +23,10 @@ import tkinter as tk
 from tkinter import messagebox
 
 from shared.utils import setup_logger
-from gui.main_window import TrainingMainWindow
-from core.dataset_manager import DatasetManager
-from core.training_manager import TrainingManager
-from core.model_manager import ModelManager
+from training_app.gui.main_window import TrainingMainWindow
+from training_app.core.dataset_manager import DatasetManager
+from training_app.core.training_manager import TrainingManager
+from training_app.core.model_manager import ModelManager
 
 
 class TrainingApp:
