@@ -126,7 +126,7 @@ class TrainingMainWindow:
         self.category_combo.pack(side=tk.LEFT)
         self.category_combo.bind("<<ComboboxSelected>>", self.on_category_change)
         
-        ttk.Button(category_select_frame, text="更新", command=self.refresh_categories).pack(side=tk.LEFT, padx=(10, 0))
+        ttk.Button(category_select_frame, text="更新", command=self.refresh_categories_full).pack(side=tk.LEFT, padx=(10, 0))
         
         # データセット選択
         dataset_select_frame = ttk.LabelFrame(self.dataset_frame, text="データセットパス", padding="10")
@@ -164,8 +164,8 @@ class TrainingMainWindow:
         ttk.Button(button_frame, text="データセット検証", command=self.validate_dataset).pack(side=tk.LEFT)
         ttk.Button(button_frame, text="統計情報更新", command=self.update_dataset_stats).pack(side=tk.LEFT, padx=(5, 0))
         
-        # 初期表示
-        self.refresh_categories()
+        # 初期表示（軽量化）
+        self.setup_initial_state()
         self.show_no_dataset_info()
     
     def on_dataset_type_change(self):
@@ -182,8 +182,13 @@ class TrainingMainWindow:
             self.dataset_manager.set_category(category)
             self.current_dataset_path = str(self.dataset_manager.category_path)
             self.dataset_path_var.set(self.current_dataset_path)
-            self.validate_dataset()
-            self.logger.info(f"カテゴリ変更: {category}")
+            
+            # 必要な場合のみ検証実行（パフォーマンス向上）
+            if hasattr(self, 'root') and self.root.winfo_exists():
+                # ウィンドウが完全に初期化されてから検証
+                self.root.after(100, self.validate_dataset)
+            
+            self.logger.info(f"カテゴリ変更: {category}, パス: {self.current_dataset_path}")
     
     def refresh_categories(self):
         """カテゴリ一覧更新"""
@@ -204,6 +209,55 @@ class TrainingMainWindow:
         except Exception as e:
             self.logger.error(f"カテゴリ一覧更新エラー: {e}")
             messagebox.showerror("エラー", f"カテゴリ一覧更新エラー:\n{e}")
+    
+    def refresh_categories_full(self):
+        """完全なカテゴリ更新（ユーザー操作用）"""
+        try:
+            self.status_var.set("カテゴリ一覧更新中...")
+            categories = self.dataset_manager.get_available_categories()
+            self.category_combo['values'] = categories
+            
+            if categories:
+                current = self.category_var.get()
+                if current not in categories:
+                    self.category_var.set(categories[0])
+                    self.on_category_change()
+                else:
+                    # 現在のカテゴリを保持しつつパスを再設定
+                    self.on_category_change()
+            else:
+                self.category_combo['values'] = []
+                self.category_var.set("")
+                
+            self.status_var.set(f"カテゴリ一覧更新完了: {len(categories)}件")
+            messagebox.showinfo("完了", f"カテゴリ一覧を更新しました（{len(categories)}件）")
+            
+        except Exception as e:
+            self.logger.error(f"カテゴリ一覧更新エラー: {e}")
+            self.status_var.set("エラー")
+            messagebox.showerror("エラー", f"カテゴリ一覧更新エラー:\n{e}")
+    
+    def setup_initial_state(self):
+        """軽量な初期状態設定（起動時間短縮）"""
+        try:
+            # デフォルトカテゴリの設定のみ（検証は後回し）
+            self.category_combo['values'] = ["bottle", "cable", "capsule", "carpet", "grid", 
+                                            "hazelnut", "leather", "metal_nut", "pill", "screw", 
+                                            "tile", "toothbrush", "transistor", "wood", "zipper"]
+            
+            # デフォルトカテゴリ設定を確実に反映
+            default_category = "bottle"
+            self.category_var.set(default_category)
+            self.dataset_manager.set_category(default_category)
+            self.current_dataset_path = str(self.dataset_manager.category_path)
+            self.dataset_path_var.set(self.current_dataset_path)
+            
+            self.logger.info(f"初期状態設定完了: カテゴリ={default_category}, パス={self.current_dataset_path}")
+            
+        except Exception as e:
+            self.logger.error(f"初期状態設定エラー: {e}")
+            # フォールバック: 通常の更新処理を実行
+            self.refresh_categories()
     
     def setup_training_tab(self):
         """学習タブ設定"""
@@ -451,8 +505,18 @@ class TrainingMainWindow:
     # 学習操作
     def start_training(self):
         """学習開始"""
-        if not self.current_dataset_info or not self.current_dataset_info.is_valid:
-            messagebox.showwarning("警告", "有効なデータセットが選択されていません")
+        # データセットパスとカテゴリの再確認
+        if not self.current_dataset_path:
+            # パスが未設定の場合、現在のカテゴリから再設定
+            category = self.category_var.get()
+            if category:
+                self.dataset_manager.set_category(category)
+                self.current_dataset_path = str(self.dataset_manager.category_path)
+                self.dataset_path_var.set(self.current_dataset_path)
+        
+        # データセット検証
+        if not self.current_dataset_path or not self.dataset_manager.validate_dataset(self.current_dataset_path):
+            messagebox.showwarning("警告", f"有効なデータセットが選択されていません\n\n現在のパス: {self.current_dataset_path or 'なし'}\nカテゴリ: {self.category_var.get()}\n\n「データセット検証」ボタンで問題を確認してください")
             return
         
         if self.is_training:
