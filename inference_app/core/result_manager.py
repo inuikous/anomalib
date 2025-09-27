@@ -374,3 +374,93 @@ class ResultManager:
             self.logger.error(f"結果ファイル読み込みエラー: {file_path}, {e}")
         
         return results
+    
+    @log_function_call
+    def save_batch_results(self, results: List[DetectionResult]) -> bool:
+        """
+        一括結果保存
+        
+        Args:
+            results: DetectionResultのリスト
+            
+        Returns:
+            保存成功可否
+        """
+        try:
+            if not results:
+                self.logger.warning("保存する結果がありません")
+                return True
+            
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            batch_filename = f"batch_results_{timestamp}.jsonl"
+            batch_file = self.results_dir / batch_filename
+            
+            with open(batch_file, 'w', encoding='utf-8') as f:
+                for result in results:
+                    result_data = result.to_dict()
+                    f.write(json.dumps(result_data, ensure_ascii=False) + '\n')
+            
+            self.session_results.extend(results)
+            
+            if len(self.session_results) > self.max_session_results:
+                excess = len(self.session_results) - self.max_session_results
+                self.session_results = self.session_results[excess:]
+                self.logger.debug(f"セッション履歴制限: {excess}件削除")
+            
+            self.logger.info(f"一括結果保存完了: {len(results)}件 -> {batch_filename}")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"一括結果保存エラー: {e}")
+            return False
+    
+    @log_function_call
+    def export_batch_results_csv(self, results: List[DetectionResult], file_path: str) -> bool:
+        """
+        一括結果のCSVエクスポート
+        
+        Args:
+            results: DetectionResultのリスト
+            file_path: エクスポート先ファイルパス
+            
+        Returns:
+            エクスポート成功可否
+        """
+        try:
+            if not results:
+                self.logger.warning("エクスポートする結果がありません")
+                return False
+            
+            file_path_obj = Path(file_path)
+            
+            fieldnames = [
+                'ファイル名', '画像パス', '判定結果', '信頼度', '信頼度(%)',
+                '処理時間(ms)', '検知日時', 'モデルバージョン', '閾値', 'デバイス'
+            ]
+            
+            with open(file_path_obj, 'w', newline='', encoding='utf-8-sig') as csvfile:
+                writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+                writer.writeheader()
+                
+                for result in results:
+                    metadata = result.metadata
+                    row = {
+                        'ファイル名': result.filename,
+                        '画像パス': result.image_path,
+                        '判定結果': result.status_text,
+                        '信頼度': f"{result.confidence_score:.4f}",
+                        '信頼度(%)': f"{result.confidence_percentage}%",
+                        '処理時間(ms)': f"{result.processing_time_ms:.2f}",
+                        '検知日時': result.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+                        'モデルバージョン': result.model_version,
+                        '閾値': metadata.get('threshold', 'unknown'),
+                        'デバイス': metadata.get('device', 'unknown')
+                    }
+                    writer.writerow(row)
+            
+            self.logger.info(f"一括CSV エクスポート完了: {len(results)}件 -> {file_path}")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"一括CSV エクスポートエラー: {e}")
+            return False

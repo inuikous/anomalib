@@ -244,8 +244,25 @@ class ImageView:
     
     def on_canvas_click(self, event):
         """キャンバスクリック処理"""
-        # 現在は基本的なクリック処理のみ
-        pass
+        if self.current_image is not None:
+            x = self.canvas.canvasx(event.x)
+            y = self.canvas.canvasy(event.y)
+            self.logger.debug(f"キャンバスクリック: ({x:.0f}, {y:.0f})")
+            
+            canvas_width = self.canvas.winfo_width()
+            canvas_height = self.canvas.winfo_height()
+            
+            if 0 <= x <= canvas_width and 0 <= y <= canvas_height:
+                image_height, image_width = self.current_image.shape[:2]
+                
+                img_x = int(x * image_width / canvas_width)
+                img_y = int(y * image_height / canvas_height)
+                
+                if 0 <= img_x < image_width and 0 <= img_y < image_height:
+                    pixel_value = self.current_image[img_y, img_x]
+                    self.logger.info(f"画像座標: ({img_x}, {img_y}), RGB: {pixel_value}")
+                    
+                    self._update_pixel_info(img_x, img_y, pixel_value)
     
     def get_current_image(self) -> Optional[np.ndarray]:
         """現在の画像取得"""
@@ -254,3 +271,22 @@ class ImageView:
     def get_current_file_path(self) -> Optional[str]:
         """現在のファイルパス取得"""
         return self.current_file_path
+    
+    def _update_pixel_info(self, x: int, y: int, pixel_value):
+        """ピクセル情報更新"""
+        try:
+            if hasattr(self, 'info_frame') and self.info_frame:
+                for widget in self.info_frame.winfo_children():
+                    if hasattr(widget, 'configure'):
+                        text = widget.cget('text')
+                        if 'ピクセル情報' in text:
+                            if len(pixel_value) == 3:
+                                rgb_text = f"R:{pixel_value[0]}, G:{pixel_value[1]}, B:{pixel_value[2]}"
+                            else:
+                                rgb_text = f"値:{pixel_value}"
+                            
+                            new_text = f"ピクセル情報: ({x}, {y}) - {rgb_text}"
+                            widget.configure(text=new_text)
+                            break
+        except Exception as e:
+            self.logger.error(f"ピクセル情報更新エラー: {e}")

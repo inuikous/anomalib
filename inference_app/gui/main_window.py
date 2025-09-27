@@ -48,6 +48,8 @@ class InferenceMainWindow:
         # 状態管理
         self.model_loaded = False
         self.current_model_path = None
+        self.current_directory = None
+        self.batch_results = []
         
         self.logger.info("InferenceMainWindow初期化完了")
     
@@ -119,9 +121,17 @@ class InferenceMainWindow:
         ttk.Button(process_frame, text="画像選択", 
                   command=self.select_image).pack(side=tk.LEFT, padx=(0, 5))
         
+        ttk.Button(process_frame, text="ディレクトリ選択", 
+                  command=self.select_directory).pack(side=tk.LEFT, padx=(0, 5))
+        
         ttk.Button(process_frame, text="異常検知実行", 
                   command=self.process_image, 
                   state=tk.DISABLED).pack(side=tk.LEFT, padx=(0, 5))
+        
+        self.batch_button = ttk.Button(process_frame, text="一括処理実行", 
+                                      command=self.process_batch, 
+                                      state=tk.DISABLED)
+        self.batch_button.pack(side=tk.LEFT, padx=(0, 5))
         
         # 閾値設定
         threshold_frame = ttk.Frame(control_frame)
@@ -139,7 +149,7 @@ class InferenceMainWindow:
         self.threshold_label.pack(side=tk.LEFT)
         
         # ボタン状態管理用参照保存
-        self.process_button = process_frame.winfo_children()[1]
+        self.process_button = process_frame.winfo_children()[2]
     
     def setup_main_content_frame(self, parent):
         """メインコンテンツフレーム設定"""
@@ -181,8 +191,10 @@ class InferenceMainWindow:
         file_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="ファイル", menu=file_menu)
         file_menu.add_command(label="画像を開く", command=self.select_image)
+        file_menu.add_command(label="ディレクトリを開く", command=self.select_directory)
         file_menu.add_separator()
         file_menu.add_command(label="結果をCSVエクスポート", command=self.export_csv)
+        file_menu.add_command(label="一括結果をCSVエクスポート", command=self.export_batch_csv)
         file_menu.add_command(label="レポート生成", command=self.generate_report)
         file_menu.add_separator()
         file_menu.add_command(label="終了", command=self.on_closing)
@@ -257,12 +269,17 @@ class InferenceMainWindow:
             self.model_status_var.set("モデル読み込み済み")
             self.status_var.set("モデル読み込み完了")
             self.process_button.config(state=tk.NORMAL)
+            
+            if self.current_directory:
+                self.batch_button.config(state=tk.NORMAL)
+            
             self.logger.info("モデル読み込み成功")
         else:
             self.model_loaded = False
             self.model_status_var.set("モデル読み込み失敗")
             self.status_var.set("モデル読み込み失敗")
             self.process_button.config(state=tk.DISABLED)
+            self.batch_button.config(state=tk.DISABLED)
             messagebox.showerror("エラー", "モデルの読み込みに失敗しました")
     
     def select_image(self):
@@ -379,6 +396,131 @@ class InferenceMainWindow:
         """処理エラー時の処理"""
         self.status_var.set(f"エラー: {error_msg}")
         messagebox.showerror("処理エラー", error_msg)
+    
+    def select_directory(self):
+        """ディレクトリ選択"""
+        try:
+            initial_dir = "./datasets/development/mvtec_anomaly_detection"
+            if not Path(initial_dir).exists():
+                initial_dir = "."
+            
+            directory_path = filedialog.askdirectory(
+                title="画像ディレクトリを選択",
+                initialdir=initial_dir
+            )
+            
+            if directory_path:
+                self.current_directory = directory_path
+                image_files = self.image_manager.find_images_in_directory(directory_path)
+                
+                if image_files:
+                    self.batch_button.config(state=tk.NORMAL if self.model_loaded else tk.DISABLED)
+                    self.status_var.set(f"ディレクトリ選択完了: {len(image_files)}件の画像を発見")
+                    self.logger.info(f"ディレクトリ選択: {directory_path} ({len(image_files)}件)")
+                else:
+                    self.status_var.set("選択したディレクトリに画像が見つかりませんでした")
+                    messagebox.showwarning("警告", "選択したディレクトリに画像ファイルが見つかりませんでした")
+                    
+        except Exception as e:
+            self.logger.error(f"ディレクトリ選択エラー: {e}")
+            messagebox.showerror("エラー", f"ディレクトリ選択中にエラーが発生しました: {e}")
+    
+    def process_batch(self):
+        """一括処理実行"""
+        if not self.model_loaded:
+            messagebox.showwarning("警告", "先にモデルを読み込んでください")
+            return
+        
+        if not self.current_directory:
+            messagebox.showwarning("警告", "先にディレクトリを選択してください")
+            return
+        
+        try:
+            self.status_var.set("一括処理開始...")
+            self.root.update()
+            
+            def batch_worker():
+                image_files = self.image_manager.find_images_in_directory(self.current_directory)
+                
+                if not image_files:
+                    self.root.after(0, lambda: self._on_batch_error("ディレクトリに画像が見つかりません"))
+                    return
+                
+                images_data = self.image_manager.batch_load_images(image_files)
+                
+                if not images_data:
+                    self.root.after(0, lambda: self._on_batch_error("画像の読み込みに失敗しました"))
+                    return
+                
+                results = self.anomaly_detector.batch_detect_anomaly(images_data)
+                
+                if results:
+                    self.batch_results = results
+                    self.root.after(0, lambda: self._on_batch_completed(results))
+                else:
+                    self.root.after(0, lambda: self._on_batch_error("一括処理で結果が生成されませんでした"))
+            
+            threading.Thread(target=batch_worker, daemon=True).start()
+            
+        except Exception as e:
+            self.logger.error(f"一括処理エラー: {e}")
+            messagebox.showerror("エラー", f"一括処理中にエラーが発生しました: {e}")
+            self.status_var.set("エラー")
+    
+    def _on_batch_completed(self, results: list):
+        """一括処理完了時の処理"""
+        try:
+            self.result_manager.save_batch_results(results)
+            
+            anomaly_count = sum(1 for r in results if r.is_anomaly)
+            normal_count = len(results) - anomaly_count
+            
+            self.status_var.set(f"一括処理完了: {len(results)}件処理 "
+                              f"(正常:{normal_count}件, 異常:{anomaly_count}件)")
+            
+            self.logger.info(f"一括処理完了: {len(results)}件の結果を生成")
+            
+            result_text = f"一括処理が完了しました。\n\n"
+            result_text += f"処理件数: {len(results)}件\n"
+            result_text += f"正常: {normal_count}件\n"
+            result_text += f"異常: {anomaly_count}件\n\n"
+            result_text += "結果をCSVでエクスポートしますか？"
+            
+            if messagebox.askyesno("一括処理完了", result_text):
+                self.export_batch_csv()
+                
+        except Exception as e:
+            self.logger.error(f"一括処理完了時エラー: {e}")
+            self.status_var.set("一括処理結果保存エラー")
+    
+    def _on_batch_error(self, error_msg: str):
+        """一括処理エラー時の処理"""
+        self.status_var.set(f"一括処理エラー: {error_msg}")
+        messagebox.showerror("一括処理エラー", error_msg)
+    
+    def export_batch_csv(self):
+        """一括結果CSV エクスポート"""
+        try:
+            if not self.batch_results:
+                messagebox.showinfo("情報", "エクスポートする一括結果がありません")
+                return
+            
+            file_path = filedialog.asksaveasfilename(
+                title="一括結果CSV エクスポート先を選択",
+                defaultextension=".csv",
+                filetypes=[("CSV files", "*.csv")]
+            )
+            
+            if file_path:
+                success = self.result_manager.export_batch_results_csv(self.batch_results, file_path)
+                if success:
+                    messagebox.showinfo("完了", f"一括結果CSV エクスポート完了: {file_path}")
+                else:
+                    messagebox.showerror("エラー", "一括結果CSV エクスポートに失敗しました")
+                    
+        except Exception as e:
+            self.logger.error(f"一括結果CSV エクスポートエラー: {e}")
+            messagebox.showerror("エラー", f"一括結果CSV エクスポート中にエラーが発生しました: {e}")
     
     def on_threshold_changed(self, value):
         """閾値変更時の処理"""

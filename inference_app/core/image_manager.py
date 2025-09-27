@@ -279,3 +279,75 @@ class ImageManager:
     def get_current_image_path(self) -> str:
         """現在の画像パス取得"""
         return self.current_image_path or ""
+    
+    @log_function_call
+    def find_images_in_directory(self, directory_path: str) -> List[str]:
+        """
+        ディレクトリ内の画像ファイルを検索
+        
+        Args:
+            directory_path: 検索対象ディレクトリパス
+            
+        Returns:
+            画像ファイルパスのリスト
+        """
+        try:
+            from typing import List
+            
+            directory = Path(directory_path)
+            if not directory.exists() or not directory.is_dir():
+                self.logger.error(f"ディレクトリが見つかりません: {directory_path}")
+                return []
+            
+            image_files = []
+            
+            for ext in self.supported_formats:
+                pattern = f"*{ext}"
+                files = list(directory.rglob(pattern))
+                image_files.extend([str(f) for f in files])
+                
+                pattern_upper = f"*{ext.upper()}"
+                files_upper = list(directory.rglob(pattern_upper))
+                image_files.extend([str(f) for f in files_upper])
+            
+            image_files = list(set(image_files))
+            image_files.sort()
+            
+            self.logger.info(f"ディレクトリ内画像検索完了: {len(image_files)}件 in {directory_path}")
+            return image_files
+            
+        except Exception as e:
+            self.logger.error(f"ディレクトリ画像検索エラー: {directory_path}, エラー: {e}")
+            return []
+    
+    @log_function_call
+    def batch_load_images(self, image_paths: List[str]) -> List[tuple]:
+        """
+        複数画像の一括読み込み
+        
+        Args:
+            image_paths: 画像パスのリスト
+            
+        Returns:
+            (画像パス, 読み込み済み画像, 成功フラグ) のタプルのリスト
+        """
+        results = []
+        
+        for i, image_path in enumerate(image_paths):
+            try:
+                image = self.load_image(image_path)
+                if image is not None:
+                    results.append((image_path, image, True))
+                    self.logger.debug(f"一括読み込み成功 ({i+1}/{len(image_paths)}): {Path(image_path).name}")
+                else:
+                    results.append((image_path, None, False))
+                    self.logger.warning(f"一括読み込み失敗 ({i+1}/{len(image_paths)}): {Path(image_path).name}")
+                    
+            except Exception as e:
+                self.logger.error(f"一括読み込みエラー ({i+1}/{len(image_paths)}): {image_path}, エラー: {e}")
+                results.append((image_path, None, False))
+        
+        success_count = sum(1 for _, _, success in results if success)
+        self.logger.info(f"一括読み込み完了: {success_count}/{len(image_paths)}件成功")
+        
+        return results

@@ -382,6 +382,47 @@ class AnomalyDetector:
                 "raw_score": 0.0
             }
     
+    def batch_detect_anomaly(self, images_data: list) -> list:
+        """
+        複数画像の一括異常検知
+        
+        Args:
+            images_data: (画像パス, 画像データ, 成功フラグ) のタプルのリスト
+            
+        Returns:
+            DetectionResultのリスト
+        """
+        if not self.is_model_loaded():
+            self.logger.error("モデルが読み込まれていません")
+            return []
+        
+        results = []
+        total_images = len(images_data)
+        
+        self.logger.info(f"一括異常検知開始: {total_images}件")
+        
+        for i, (image_path, image_data, load_success) in enumerate(images_data):
+            try:
+                if not load_success or image_data is None:
+                    self.logger.warning(f"スキップ ({i+1}/{total_images}): {Path(image_path).name} - 読み込み失敗")
+                    continue
+                
+                result = self.detect_anomaly(image_data)
+                if result:
+                    result.image_path = image_path
+                    results.append(result)
+                    
+                    status = "異常" if result.is_anomaly else "正常"
+                    self.logger.info(f"一括処理完了 ({i+1}/{total_images}): {Path(image_path).name} - {status}")
+                else:
+                    self.logger.warning(f"検知失敗 ({i+1}/{total_images}): {Path(image_path).name}")
+                    
+            except Exception as e:
+                self.logger.error(f"一括処理エラー ({i+1}/{total_images}): {image_path}, エラー: {e}")
+        
+        self.logger.info(f"一括異常検知完了: {len(results)}件の結果を生成")
+        return results
+    
     def _extract_model_version(self, model_path: Path) -> str:
         """モデルバージョン抽出"""
         try:
