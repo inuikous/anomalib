@@ -99,7 +99,7 @@ def log_function_call(func):
         safe_kwargs = {k: v for k, v in kwargs.items() 
                       if not k.lower().startswith('password')}
         
-        logger.info(
+        logger.debug(
             f"関数呼び出し: {func.__name__}",
             extra={"extra_data": {
                 "function": func.__name__,
@@ -110,7 +110,7 @@ def log_function_call(func):
         
         try:
             result = func(*args, **kwargs)
-            logger.info(f"関数完了: {func.__name__}")
+            logger.debug(f"関数完了: {func.__name__}")
             return result
         except Exception as e:
             logger.error(
@@ -141,7 +141,7 @@ def log_error(logger: logging.Logger, error: Exception, context: str = "", **ext
 
 def log_performance(logger: logging.Logger, operation: str, duration: float, **extra_data):
     """パフォーマンスログ記録"""
-    logger.info(
+    logger.debug(
         f"パフォーマンス: {operation}",
         extra={"extra_data": {
             "operation": operation,

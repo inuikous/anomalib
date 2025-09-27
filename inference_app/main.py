@@ -119,7 +119,6 @@ def main():
         # ログ設定
         logger = setup_logger("main")
         logger.info("=== 推論アプリケーション開始 ===")
-        logger.info("OpenVINOキャッシュ: 無効化済み")
         
         # アプリ実行
         app = InferenceApp()

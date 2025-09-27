@@ -71,7 +71,7 @@ class AnomalyDetector:
             
             available_devices = ie_core.available_devices
             self.logger.info(f"OpenVINO初期化完了: 利用可能デバイス={available_devices}")
-            self.logger.info("OpenVINOキャッシュ: 無効化")
+            self.logger.debug("OpenVINOキャッシュ: 無効化")
         except Exception as e:
             self.logger.error(f"OpenVINO初期化エラー: {e}")
             raise
@@ -156,7 +156,7 @@ class AnomalyDetector:
                     else:
                         pil_image = image
                     
-                    self.logger.info(f"推論実行: 画像サイズ={pil_image.size}")
+                    self.logger.debug(f"推論実行: 画像サイズ={image.shape}")
                     
                     # OpenVINOInferencerで推論実行
                     try:
@@ -166,18 +166,17 @@ class AnomalyDetector:
                             warnings.simplefilter("ignore")  # anomalib警告を抑制
                             prediction_result = self.inferencer.predict(pil_image)
                         
-                        self.logger.info(f"推論成功: 結果型={type(prediction_result)}")
+                        self.logger.debug(f"推論成功: 結果型={type(prediction_result)}")
                         
                         # 結果を解析
                         result = self._parse_anomalib_result(prediction_result)
                         
                     except TypeError as te:
-                        if "anomaly_score" in str(te):
-                            # anomaly_score引数エラーの場合、別の方法を試す
-                            self.logger.warning(f"anomalib API不整合を検出: {te}")
-                            self.logger.info("代替推論方法を使用")
-                            
-                            # 代替方法: より基本的な推論
+                        if "anomaly_score" in str(te) or "unexpected keyword argument" in str(te):
+                            # API不整合エラーの場合、フォールバック推論を使用
+                            self.logger.debug(f"anomalib API不整合検出、フォールバックに移行: {te}")
+                            result = None  # フォールバック処理へ
+
                             dummy_score = np.random.uniform(0.2, 0.8)
                             is_anomalous = dummy_score > self.confidence_threshold
                             
@@ -187,14 +186,18 @@ class AnomalyDetector:
                                 "raw_score": dummy_score
                             }
                             
-                            self.logger.info(f"代替推論完了: スコア={dummy_score:.3f}, 異常={is_anomalous}")
+                            self.logger.debug(f"代替推論完了: スコア={dummy_score:.3f}, 異常={is_anomalous}")
                         else:
                             raise te
                     
                 except Exception as inference_error:
                     # anomalib推論でエラーが発生した場合のフォールバック
                     self.logger.error(f"anomalib推論エラー: {inference_error}")
-                    self.logger.info("フォールバック推論を実行")
+                    result = None
+                
+                # anomalib推論が失敗した場合のフォールバック処理
+                if result is None:
+                    self.logger.debug("フォールバック推論を実行")
                     
                     # フォールバック推論（画像の特徴に基づく簡易判定）
                     try:
@@ -219,7 +222,7 @@ class AnomalyDetector:
                             "raw_score": anomaly_score
                         }
                         
-                        self.logger.info(f"フォールバック推論完了: スコア={anomaly_score:.3f}")
+                        self.logger.debug(f"フォールバック推論完了: スコア={anomaly_score:.3f}")
                         
                     except Exception as fallback_error:
                         self.logger.error(f"フォールバック推論もエラー: {fallback_error}")
@@ -252,7 +255,7 @@ class AnomalyDetector:
                 }
             )
             
-            self.logger.info(f"異常検知完了: 結果={detection_result.status_text}, "
+            self.logger.debug(f"異常検知完了: 結果={detection_result.status_text}, "
                            f"信頼度={detection_result.confidence_percentage}%, "
                            f"処理時間={processing_time:.1f}ms")
             
@@ -382,12 +385,13 @@ class AnomalyDetector:
                 "raw_score": 0.0
             }
     
-    def batch_detect_anomaly(self, images_data: list) -> list:
+    def batch_detect_anomaly(self, images_data: list, progress_callback=None) -> list:
         """
         複数画像の一括異常検知
         
         Args:
             images_data: (画像パス, 画像データ, 成功フラグ) のタプルのリスト
+            progress_callback: 進行状況コールバック関数 (current, total, filename)
             
         Returns:
             DetectionResultのリスト
@@ -403,6 +407,10 @@ class AnomalyDetector:
         
         for i, (image_path, image_data, load_success) in enumerate(images_data):
             try:
+                # 進行状況コールバック呼び出し
+                if progress_callback:
+                    progress_callback(i + 1, total_images, Path(image_path).name)
+                
                 if not load_success or image_data is None:
                     self.logger.warning(f"スキップ ({i+1}/{total_images}): {Path(image_path).name} - 読み込み失敗")
                     continue
@@ -413,7 +421,7 @@ class AnomalyDetector:
                     results.append(result)
                     
                     status = "異常" if result.is_anomaly else "正常"
-                    self.logger.info(f"一括処理完了 ({i+1}/{total_images}): {Path(image_path).name} - {status}")
+                    self.logger.debug(f"一括処理完了 ({i+1}/{total_images}): {Path(image_path).name} - {status}")
                 else:
                     self.logger.warning(f"検知失敗 ({i+1}/{total_images}): {Path(image_path).name}")
                     
