@@ -9,7 +9,7 @@ import multiprocessing
 if sys.platform.startswith('win'):
     multiprocessing.set_start_method('spawn', force=True)
 
-# PyTorch DLL問題対応
+# PyTorch環境変数設定
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
 os.environ['OMP_NUM_THREADS'] = '1'
 
