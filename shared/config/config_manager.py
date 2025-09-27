@@ -15,9 +15,9 @@ class ConfigManager:
         設定管理初期化
         
         Args:
-            environment: 環境名 ("development" or "production")
+            environment: 環境名（現在は使用していません - 統合config.yamlを使用）
         """
-        self.environment = environment
+        self.environment = environment  # 後方互換性のため保持
         self.config_dir = Path(__file__).parent.parent.parent / "config"
         self.config = self._load_config()
         
@@ -86,18 +86,10 @@ class ConfigManager:
     def _load_config(self) -> Dict[str, Any]:
         """設定ファイル読み込み"""
         try:
-            # 共通設定読み込み
-            app_config_path = self.config_dir / "app_config.yaml"
-            with open(app_config_path, 'r', encoding='utf-8') as f:
-                app_config = yaml.safe_load(f)
-            
-            # 環境別設定読み込み
-            env_config_path = self.config_dir / f"{self.environment}_config.yaml"
-            with open(env_config_path, 'r', encoding='utf-8') as f:
-                env_config = yaml.safe_load(f)
-            
-            # 設定マージ
-            merged_config = {**app_config, **env_config}
+            # 統合設定ファイル読み込み
+            config_path = self.config_dir / "config.yaml"
+            with open(config_path, 'r', encoding='utf-8') as f:
+                merged_config = yaml.safe_load(f)
             
             # パス設定の絶対パス変換
             merged_config = self._resolve_paths(merged_config)
@@ -175,7 +167,9 @@ _config_instances = {}
 
 
 def get_config_manager(environment: str = "development") -> ConfigManager:
-    """設定管理インスタンス取得（シングルトン）"""
-    if environment not in _config_instances:
-        _config_instances[environment] = ConfigManager(environment)
-    return _config_instances[environment]
+    """設定管理インスタンス取得"""
+    # 統合config.yamlを使用するため、環境に関係なく同一インスタンス
+    key = "unified"
+    if key not in _config_instances:
+        _config_instances[key] = ConfigManager(environment)
+    return _config_instances[key]

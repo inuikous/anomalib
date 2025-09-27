@@ -245,14 +245,19 @@ class TrainingMainWindow:
                                             "hazelnut", "leather", "metal_nut", "pill", "screw", 
                                             "tile", "toothbrush", "transistor", "wood", "zipper"]
             
+            # config.yamlからアクティブカテゴリを取得
+            active_category = self.dataset_manager.config.get('datasets', {}).get('mvtec', {}).get('active_category', 'bottle')
+            
             # デフォルトカテゴリ設定を確実に反映
-            default_category = "bottle"
-            self.category_var.set(default_category)
-            self.dataset_manager.set_category(default_category)
+            self.category_var.set(active_category)
+            self.dataset_manager.set_category(active_category)
             self.current_dataset_path = str(self.dataset_manager.category_path)
             self.dataset_path_var.set(self.current_dataset_path)
             
-            self.logger.info(f"初期状態設定完了: カテゴリ={default_category}, パス={self.current_dataset_path}")
+            # TrainingManagerにも同じカテゴリを設定
+            self.training_manager.update_category(active_category)
+            
+            self.logger.info(f"初期状態設定完了: カテゴリ={active_category}, パス={self.current_dataset_path}")
             
         except Exception as e:
             self.logger.error(f"初期状態設定エラー: {e}")
@@ -268,6 +273,10 @@ class TrainingMainWindow:
         config_frame = ttk.LabelFrame(self.training_frame, text="学習設定", padding="10")
         config_frame.pack(fill=tk.X, pady=(0, 10))
         
+        # config.yamlからデフォルト値を取得（新しい設定を確実に読み込み）
+        self.training_manager.config = self.training_manager.config_manager.get_config()
+        default_params = self.training_manager.get_default_params()
+        
         # モデル選択
         ttk.Label(config_frame, text="モデルタイプ:").grid(row=0, column=0, sticky="w")
         self.model_type_var = tk.StringVar(value="PaDiM")
@@ -277,13 +286,34 @@ class TrainingMainWindow:
         
         # エポック数
         ttk.Label(config_frame, text="エポック数:").grid(row=1, column=0, sticky="w")
-        self.epochs_var = tk.StringVar(value="100")
+        self.epochs_var = tk.StringVar(value=str(default_params['epochs']))
         ttk.Entry(config_frame, textvariable=self.epochs_var, width=10).grid(row=1, column=1, sticky="w", padx=(5, 0))
         
         # バッチサイズ
         ttk.Label(config_frame, text="バッチサイズ:").grid(row=2, column=0, sticky="w")
-        self.batch_size_var = tk.StringVar(value="32")
+        self.batch_size_var = tk.StringVar(value=str(default_params['batch_size']))
         ttk.Entry(config_frame, textvariable=self.batch_size_var, width=10).grid(row=2, column=1, sticky="w", padx=(5, 0))
+        
+        # 学習率
+        ttk.Label(config_frame, text="学習率:").grid(row=0, column=2, sticky="w", padx=(20, 0))
+        self.learning_rate_var = tk.StringVar(value=str(default_params['learning_rate']))
+        ttk.Entry(config_frame, textvariable=self.learning_rate_var, width=10).grid(row=0, column=3, sticky="w", padx=(5, 0))
+        
+        # デバイス選択
+        ttk.Label(config_frame, text="デバイス:").grid(row=1, column=2, sticky="w", padx=(20, 0))
+        self.device_var = tk.StringVar(value=default_params['device'])
+        device_combo = ttk.Combobox(config_frame, textvariable=self.device_var,
+                                   values=["auto", "cpu", "cuda"], state="readonly", width=8)
+        device_combo.grid(row=1, column=3, sticky="w", padx=(5, 0))
+        
+        # 早期停止
+        ttk.Label(config_frame, text="早期停止:").grid(row=2, column=2, sticky="w", padx=(20, 0))
+        self.early_stopping_var = tk.StringVar(value=str(default_params['early_stopping_patience']))
+        ttk.Entry(config_frame, textvariable=self.early_stopping_var, width=10).grid(row=2, column=3, sticky="w", padx=(5, 0))
+        
+        # リセットボタン
+        ttk.Button(config_frame, text="デフォルト値に戻す", 
+                  command=self.reset_training_params).grid(row=3, column=0, columnspan=2, pady=(10, 0), sticky="w")
         
         # 学習実行
         execution_frame = ttk.LabelFrame(self.training_frame, text="学習実行", padding="10")
@@ -515,11 +545,36 @@ class TrainingMainWindow:
                 self.dataset_path_var.set(self.current_dataset_path)
         
         # データセット検証
-        if not self.current_dataset_path or not self.dataset_manager.validate_dataset(self.current_dataset_path):
-            messagebox.showwarning("警告", f"有効なデータセットが選択されていません\n\n現在のパス: {self.current_dataset_path or 'なし'}\nカテゴリ: {self.category_var.get()}\n\n「データセット検証」ボタンで問題を確認してください")
+        if not self.current_dataset_path:
+            messagebox.showwarning("警告", "データセットパスが設定されていません。\n\n「データセット管理」タブでデータセットを選択してください。")
+            return
+            
+        # パスの存在確認
+        dataset_path = Path(self.current_dataset_path)
+        if not dataset_path.exists():
+            # 絶対パスでも確認
+            abs_path = Path.cwd() / self.current_dataset_path
+            self.logger.error(f"データセットパス不存在: 相対パス={self.current_dataset_path}, 絶対パス={abs_path}")
+            messagebox.showwarning("警告", f"データセットパスが存在しません:\n相対パス: {self.current_dataset_path}\n絶対パス: {abs_path}\n\n正しいパスを設定してください。")
+            return
+            
+        # データセット構造の検証
+        try:
+            is_valid = self.dataset_manager.validate_dataset(self.current_dataset_path)
+            if not is_valid:
+                # より詳細な検証情報を取得
+                dataset_info = self.dataset_manager.get_dataset_info(self.current_dataset_path)
+                error_msg = f"データセット構造が無効です:\n\nパス: {self.current_dataset_path}\nカテゴリ: {self.category_var.get()}\n"
+                if hasattr(dataset_info, 'validation_errors') and dataset_info.validation_errors:
+                    error_msg += f"\nエラー詳細:\n" + "\n".join(dataset_info.validation_errors[:3])  # 最初の3つのエラーのみ表示
+                messagebox.showwarning("警告", error_msg)
+                return
+        except Exception as e:
+            messagebox.showerror("エラー", f"データセット検証中にエラーが発生しました:\n{str(e)}")
             return
         
-        if self.is_training:
+        # 二重チェック：GUIとTrainingManager両方で確認
+        if self.is_training or self.training_manager.is_training:
             messagebox.showwarning("警告", "既に学習が実行中です")
             return
         
@@ -528,8 +583,15 @@ class TrainingMainWindow:
             model_type = self.model_type_var.get()
             epochs = int(self.epochs_var.get())
             batch_size = int(self.batch_size_var.get())
+            learning_rate = float(self.learning_rate_var.get())
+            device = self.device_var.get()
+            early_stopping = int(self.early_stopping_var.get())
             
-            # 学習開始
+            # GUI設定を一時的に適用
+            self.apply_gui_settings_to_config(model_type, epochs, batch_size, 
+                                            learning_rate, device, early_stopping)
+            
+            # 学習状態を設定（GUI側とTrainingManager側両方）
             self.is_training = True
             self.start_button.configure(state="disabled")
             self.stop_button.configure(state="normal")
@@ -545,7 +607,7 @@ class TrainingMainWindow:
             )
             self.training_thread.start()
             
-            self.logger.info(f"学習開始: {model_type}, epochs={epochs}, batch_size={batch_size}")
+            self.logger.info(f"学習開始: {model_type}, epochs={epochs}, batch_size={batch_size}, lr={learning_rate}, device={device}")
             
         except ValueError as e:
             messagebox.showerror("エラー", "学習パラメータが不正です")
@@ -553,6 +615,48 @@ class TrainingMainWindow:
             self.logger.error(f"学習開始エラー: {e}")
             messagebox.showerror("エラー", f"学習開始エラー:\n{e}")
             self.reset_training_ui()
+    
+    def apply_gui_settings_to_config(self, model_type: str, epochs: int, batch_size: int, 
+                                   learning_rate: float, device: str, early_stopping: int):
+        """GUI設定をTrainingManagerに適用"""
+        try:
+            # TrainingManagerのGUI可変パラメータを設定
+            self.training_manager.set_gui_params(
+                batch_size=batch_size,
+                epochs=epochs,
+                learning_rate=learning_rate,
+                device=device,
+                early_stopping_patience=early_stopping
+            )
+            
+            # モデル名をconfig経由で設定
+            config = self.training_manager.config_manager.get_config()
+            if 'training' not in config:
+                config['training'] = {}
+            config['training']['model_name'] = model_type.lower()
+            
+            self.logger.info(f"GUI設定適用完了: モデル={model_type}, エポック={epochs}, バッチサイズ={batch_size}")
+            
+        except Exception as e:
+            self.logger.error(f"GUI設定適用エラー: {e}")
+            raise
+    
+    def reset_training_params(self):
+        """学習パラメータをデフォルト値にリセット"""
+        try:
+            default_params = self.training_manager.get_default_params()
+            
+            self.epochs_var.set(str(default_params['epochs']))
+            self.batch_size_var.set(str(default_params['batch_size']))
+            self.learning_rate_var.set(str(default_params['learning_rate']))
+            self.device_var.set(default_params['device'])
+            self.early_stopping_var.set(str(default_params['early_stopping_patience']))
+            
+            self.logger.info("学習パラメータをデフォルト値にリセットしました")
+            
+        except Exception as e:
+            self.logger.error(f"パラメータリセットエラー: {e}")
+            messagebox.showerror("エラー", f"パラメータのリセットに失敗しました: {e}")
     
     def run_training(self, model_type: str, epochs: int, batch_size: int):
         """学習実行（バックグラウンド）"""
@@ -662,6 +766,10 @@ class TrainingMainWindow:
     def reset_training_ui(self):
         """学習UI リセット"""
         self.is_training = False
+        # TrainingManagerの状態もリセット
+        if hasattr(self.training_manager, 'is_training'):
+            self.training_manager.is_training = False
+        
         self.start_button.configure(state="normal")
         self.stop_button.configure(state="disabled")
         self.training_thread = None

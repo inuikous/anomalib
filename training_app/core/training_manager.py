@@ -36,12 +36,43 @@ class TrainingManager:
         self.progress_callback = None
         self.training_results = {}
         
+        # GUI可変パラメータを初期化
+        self.gui_params = self._load_default_params()
+        
         self.logger.info(f"TrainingManager初期化: {self.dataset_type}/{self.category}, デバイス: {self.device}")
     
     def update_category(self, category: str):
         """カテゴリ更新"""
         self.category = category
         self.logger.info(f"学習カテゴリ更新: {category}")
+    
+    def _load_default_params(self) -> dict:
+        """config.yamlからデフォルトパラメータを読み込み"""
+        config = self.config_manager.get_config()
+        training_config = config.get('training', {})
+        return {
+            'batch_size': training_config.get('batch_size', 32),
+            'epochs': training_config.get('epochs', 100),
+            'learning_rate': training_config.get('learning_rate', 0.001),
+            'device': training_config.get('device', 'auto'),
+            'early_stopping_patience': training_config.get('early_stopping_patience', 10)
+        }
+    
+    def get_default_params(self) -> dict:
+        """config.yamlから学習パラメータを取得"""
+        return self._load_default_params()
+    
+    def set_gui_params(self, batch_size: int, epochs: int, learning_rate: float, 
+                       device: str, early_stopping_patience: int):
+        """GUI可変パラメータ設定"""
+        self.gui_params.update({
+            'batch_size': batch_size,
+            'epochs': epochs,
+            'learning_rate': learning_rate,
+            'device': device,
+            'early_stopping_patience': early_stopping_patience
+        })
+        self.logger.info(f"GUI学習パラメータ更新: {self.gui_params}")
     
     def create_model(self) -> torch.nn.Module:
         """モデル作成（ローカル事前学習済みモデル使用）"""
@@ -67,6 +98,9 @@ class TrainingManager:
             
             # ローカル事前学習済み重みをロード（一時的に無効化）
             # self._load_local_backbone(model)
+            
+            # モデルを明示的に学習モードに設定
+            model.train()
             
             total_params = sum(p.numel() for p in model.parameters())
             self.logger.info(f"モデル作成完了: {model_name.upper()}, パラメータ数: {total_params:,}")
@@ -107,23 +141,23 @@ class TrainingManager:
             self.logger.error(f"ローカル重みロードエラー: {e}")
             raise RuntimeError(f"事前学習済みモデルの読み込みに失敗しました: {e}")
     
-    def create_datamodule(self) -> MVTecAD:
-        """データモジュール作成（setup_datasetのエイリアス）"""
-        return self.setup_dataset()
-    
     def setup_dataset(self) -> MVTecAD:
         """データセット準備"""
         self.logger.info(f"データセット準備開始: {self.category}")
         
+        # config.yamlからデータセットパスを取得
+        mvtec_config = self.config.get('datasets', {}).get('mvtec', {})
+        dataset_root = mvtec_config.get('base_path', './datasets/development/mvtec_anomaly_detection')
+        
         dataset_config = {
-            "root": "./datasets/development/mvtec_anomaly_detection",
+            "root": dataset_root,
             "category": self.category,
-            "train_batch_size": 16,
-            "eval_batch_size": 16,
-            "num_workers": 4,  # パフォーマンス向上
-            "test_split_mode": "from_dir",
-            "val_split_mode": "same_as_test",
-            "val_split_ratio": 0.2,
+            "train_batch_size": self.gui_params['batch_size'],
+            "eval_batch_size": self.gui_params['batch_size'],
+            "num_workers": self.config.get('training.num_workers', 4),
+            "test_split_mode": self.config.get('training.test_split_mode', 'from_dir'),
+            "val_split_mode": self.config.get('training.val_split_mode', 'same_as_test'),
+            "val_split_ratio": self.config.get('training.val_split_ratio', 0.2),
         }
         
         dataset = MVTecAD(**dataset_config)
@@ -205,11 +239,22 @@ class TrainingManager:
         checkpoint_dir = Path("./models/development/checkpoints")
         checkpoint_dir.mkdir(parents=True, exist_ok=True)
         
+        # デバイス設定（GUI可変パラメータから）
+        device_config = self.gui_params['device']
+        if device_config == 'auto':
+            accelerator = "gpu" if self.device == "cuda" else "cpu"
+        else:
+            accelerator = "gpu" if device_config == "cuda" else "cpu"
+        
+        # 混合精度設定
+        precision = "16-mixed" if self.config.get('training.mixed_precision', False) else "32"
+        
         engine = Engine(
             logger=False,
-            max_epochs=self.config.get('training.max_epochs', 10),
-            accelerator="gpu" if self.device == "cuda" else "cpu",
+            max_epochs=self.gui_params['epochs'],
+            accelerator=accelerator,
             devices=1,
+            precision=precision,
             callbacks=callbacks,
             enable_progress_bar=False,
             default_root_dir=str(checkpoint_dir.parent)
@@ -222,13 +267,21 @@ class TrainingManager:
         start_time = datetime.now()
         self.logger.info("学習開始")
         
-        engine.fit(model=model, datamodule=dataset)
+        # 警告を抑制してengine.fitを実行
+        import warnings
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", message="Consider setting `persistent_workers=True`")
+            warnings.filterwarnings("ignore", message="Found .* module.*in eval mode")
+            engine.fit(model=model, datamodule=dataset)
         
         # テスト実行
         if self.progress_callback:
             self.progress_callback(80, "テスト評価中...")
         
-        test_results = engine.test(model=model, datamodule=dataset)
+        # 警告を抑制してテストを実行
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", message="Consider setting `persistent_workers=True`")
+            test_results = engine.test(model=model, datamodule=dataset)
         
         # 結果保存
         if self.progress_callback:
@@ -246,10 +299,7 @@ class TrainingManager:
             "start_time": start_time.isoformat(),
             "end_time": end_time.isoformat(),
             "test_results": test_results if test_results else {},
-            "config": {
-                "max_epochs": self.config.get('training.max_epochs', 10),
-                "device": self.device,
-            }
+            "config": self.gui_params.copy()
         }
         
         # モデル保存
@@ -277,8 +327,7 @@ class TrainingManager:
                     progress = 40 + int((epoch / self.total_epochs) * 40)  # 40-80%
                     self.progress_func(progress, f"エポック {epoch}/{self.total_epochs}")
         
-        max_epochs = self.config.get('training.max_epochs', 10)
-        return ProgressCallback(self.progress_callback, max_epochs)
+        return ProgressCallback(self.progress_callback, self.gui_params['epochs'])
     
     def _save_model(self, model):
         """学習済みモデル保存"""

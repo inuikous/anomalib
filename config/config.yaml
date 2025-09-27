@@ -1,188 +1,66 @@
 # 異常検出システム設定ファイル
-# Phase1: MVTec bottleカテゴリ対応
 
-# 開発環境設定
-development:
-  # データセット設定
-  datasets:
-    # MVTecデータセット
-    mvtec:
-      base_path: "./datasets/development/mvtec"
-      categories: ["bottle", "cable", "capsule", "carpet", "grid", "hazelnut", "leather", "metal_nut", "pill", "screw", "tile", "toothbrush", "transistor", "wood", "zipper"]
-      train_ratio: 0.8
-      validation_ratio: 0.2
-    
-    # カスタムデータセット
-    custom:
-      base_path: "./datasets/development/custom"
-      categories: []  # 動的に検出
-      train_ratio: 0.8
-      validation_ratio: 0.2
-      
-    # 使用するデータセットタイプ
-    active_type: "mvtec"  # "mvtec" または "custom"
-    active_category: "hazelnut"  # アクティブカテゴリ
-      
-  # モデル設定
-  model:
-    default_type: "PaDiM"
-    types: ["PaDiM", "PatchCore", "FastFlow"]
-    default_threshold: 0.5
-    image_size: [256, 256]
-    
-  # モデル保存・管理設定
-  models:
-    save_path: "./models"
-    openvino_path: "./models/openvino"
-    export_path: "./models/export"
-    
-  # 学習設定
-  training:
-    batch_size: 32
-    epochs: 100
-    learning_rate: 0.001
-    early_stopping_patience: 10
-    
-  # 推論設定
-  inference:
-    device: "CPU"
-    precision: "FP32"
-    batch_size: 1
-    
-  # ログ設定
-  logging:
-    level: "INFO"
-    format: "json"
-    file_path: "./logs"
-    max_file_size_mb: 100
-    backup_count: 5
-    
-  # UI設定
-  ui:
-    theme: "default"
-    window_size: [1200, 800]
-    auto_save: true
+# データセット設定
+datasets:
+  mvtec:
+    base_path: "./datasets/development/mvtec_anomaly_detection"
+    categories: ["bottle", "cable", "capsule", "carpet", "grid", "hazelnut", "leather", "metal_nut", "pill", "screw", "tile", "toothbrush", "transistor", "wood", "zipper"]
+    active_category: "bottle"
+    train_ratio: 0.8
+    validation_ratio: 0.2
+  custom:
+    base_path: "./datasets/development/custom"
+    categories: []
+    train_ratio: 0.8
+    validation_ratio: 0.2
+  active_type: "mvtec"
 
-# 本番環境設定
-production:
-  # データセット設定
-  datasets:
-    # MVTecデータセット
-    mvtec:
-      base_path: "./datasets/production/mvtec"
-      categories: ["bottle", "cable", "capsule", "carpet", "grid", "hazelnut", "leather", "metal_nut", "pill", "screw", "tile", "toothbrush", "transistor", "wood", "zipper"]
-      train_ratio: 0.8
-      validation_ratio: 0.2
-    
-    # カスタムデータセット
-    custom:
-      base_path: "./datasets/production/custom"
-      categories: []  # 動的に検出
-      train_ratio: 0.8
-      validation_ratio: 0.2
-      
-    # 使用するデータセットタイプ
-    active_type: "mvtec"  # "mvtec" または "custom"
-    active_category: "bottle"  # アクティブカテゴリ
-      
-  # モデル設定
-  model:
-    default_type: "PaDiM"
-    types: ["PaDiM", "PatchCore", "FastFlow"]
-    default_threshold: 0.3  # 本番環境では少し厳しめ
-    image_size: [256, 256]
-    
-  # モデル保存・管理設定
-  models:
-    save_path: "./models"
-    openvino_path: "./models/openvino"
-    export_path: "./models/export"
-    
-  # 学習設定
-  training:
-    batch_size: 16  # 本番環境では少し小さめ
-    epochs: 200
-    learning_rate: 0.0005
-    early_stopping_patience: 15
-    
-  # 推論設定
-  inference:
-    device: "CPU"  # 工場環境はCPU想定
-    precision: "FP32"
-    batch_size: 1
-    
-  # ログ設定
-  logging:
-    level: "WARNING"
-    format: "json"
-    file_path: "./logs"
-    max_file_size_mb: 50
-    backup_count: 10
-    
-  # UI設定
-  ui:
-    theme: "default"
-    window_size: [1000, 700]
-    auto_save: true
+# モデル設定
+model:
+  type: "PaDiM"
+  types: ["PaDiM", "PatchCore", "FastFlow"]
+  image_size: [256, 256]
+  threshold: 0.5
 
-# テスト環境設定
-test:
-  # データセット設定
-  datasets:
-    # MVTecデータセット
-    mvtec:
-      base_path: "./datasets/test/mvtec"
-      categories: ["bottle", "cable", "capsule"]
-      train_ratio: 0.8
-      validation_ratio: 0.2
-    
-    # カスタムデータセット
-    custom:
-      base_path: "./datasets/test/custom"
-      categories: []  # 動的に検出
-      train_ratio: 0.8
-      validation_ratio: 0.2
-      
-    # 使用するデータセットタイプ
-    active_type: "mvtec"  # "mvtec" または "custom"
-    active_category: "bottle"  # アクティブカテゴリ
-      
-  # モデル設定
-  model:
-    default_type: "PaDiM"
-    types: ["PaDiM"]
-    default_threshold: 0.5
-    image_size: [256, 256]
-    
-  # モデル保存・管理設定
-  models:
-    save_path: "./models/test"
-    openvino_path: "./models/test/openvino"
-    export_path: "./models/test/export"
-    
-  # 学習設定
-  training:
-    batch_size: 8
-    epochs: 5
-    learning_rate: 0.001
-    early_stopping_patience: 2
-    
-  # 推論設定
-  inference:
-    device: "CPU"
-    precision: "FP32"
-    batch_size: 1
-    
-  # ログ設定
-  logging:
-    level: "DEBUG"
-    format: "json"
-    file_path: "./logs"
-    max_file_size_mb: 10
-    backup_count: 3
-    
-  # UI設定
-  ui:
-    theme: "default"
-    window_size: [800, 600]
-    auto_save: false
+# モデル保存・管理設定
+models:
+  save_path: "./models/development"
+  openvino_path: "./models/openvino"
+  export_path: "./models/export"
+
+# 学習設定
+training:
+  batch_size: 8
+  epochs: 100
+  learning_rate: 0.001
+  device: "auto"
+  early_stopping_patience: 10
+  num_workers: 4
+  val_split_ratio: 0.2
+  optimizer: "adam"
+  weight_decay: 1e-5
+  lr_scheduler: "cosine"
+  lr_step_size: 30
+  lr_gamma: 0.1
+  mixed_precision: false
+  test_split_mode: "from_dir"
+  val_split_mode: "same_as_test"
+
+# 推論設定
+inference:
+  device: "GPU"
+  precision: "FP32"
+  batch_size: 1
+
+# ログ設定
+logging:
+  level: "INFO"
+  file_path: "./logs"
+  max_file_size_mb: 100
+  backup_count: 5
+
+# UI設定
+ui:
+  window_size: [1200, 800]
+  theme: "default"
+  auto_save: true
