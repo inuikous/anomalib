@@ -27,7 +27,7 @@ class ImageManager:
         self.logger = setup_logger("image_manager")
         
         # 設定取得
-        self.image_size = tuple(self.config.get('datasets.mvtec.image_size', [256, 256]))
+        self.image_size = tuple(self.config.get('model.image_size', [256, 256]))
         self.supported_formats = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif'}
         
         # 処理済み画像キャッシュ
@@ -271,3 +271,11 @@ class ImageManager:
             })
         
         return stats
+    
+    def is_image_loaded(self) -> bool:
+        """画像読み込み状態確認"""
+        return self.current_image is not None
+    
+    def get_current_image_path(self) -> str:
+        """現在の画像パス取得"""
+        return self.current_image_path or ""

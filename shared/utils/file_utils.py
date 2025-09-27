@@ -211,3 +211,45 @@ def safe_remove_directory(dir_path: Path) -> bool:
     except Exception as e:
         logger.error(f"ディレクトリ削除エラー: {dir_path}, エラー: {e}")
         return False
+
+
+def cleanup_openvino_cache_directories(project_root: Path = None) -> int:
+    """
+    OpenVINOが作成した16進数キャッシュディレクトリをクリーンアップ
+    
+    Args:
+        project_root: プロジェクトルートディレクトリ（Noneの場合は現在のディレクトリ）
+        
+    Returns:
+        削除したディレクトリ数
+    """
+    try:
+        import re
+        
+        if project_root is None:
+            project_root = Path(".")
+            
+        # 16桁の16進数パターン（OpenVINOキャッシュフォルダの命名規則）
+        hex_pattern = re.compile(r'^[0-9A-F]{16}$', re.IGNORECASE)
+        deleted_count = 0
+        
+        logger.info("OpenVINOキャッシュディレクトリのクリーンアップを開始")
+        
+        for item in project_root.iterdir():
+            if item.is_dir() and hex_pattern.match(item.name):
+                # .blobファイルが含まれているかチェック（OpenVINOキャッシュの特徴）
+                blob_files = list(item.glob("*.blob"))
+                if blob_files:
+                    try:
+                        shutil.rmtree(item)
+                        logger.info(f"OpenVINOキャッシュディレクトリを削除: {item.name}")
+                        deleted_count += 1
+                    except Exception as e:
+                        logger.warning(f"キャッシュディレクトリ削除失敗: {item.name}, エラー: {e}")
+        
+        logger.info(f"OpenVINOキャッシュクリーンアップ完了: {deleted_count}個のディレクトリを削除")
+        return deleted_count
+        
+    except Exception as e:
+        logger.error(f"OpenVINOキャッシュクリーンアップエラー: {e}")
+        return 0

@@ -1,66 +1,45 @@
-# 異常検出システム設定ファイル
+# 異常検出システム設定
 
-# データセット設定
+# データセット
 datasets:
   mvtec:
     base_path: "./datasets/development/mvtec_anomaly_detection"
-    categories: ["bottle", "cable", "capsule", "carpet", "grid", "hazelnut", "leather", "metal_nut", "pill", "screw", "tile", "toothbrush", "transistor", "wood", "zipper"]
     active_category: "bottle"
-    train_ratio: 0.8
-    validation_ratio: 0.2
-  custom:
-    base_path: "./datasets/development/custom"
-    categories: []
-    train_ratio: 0.8
-    validation_ratio: 0.2
   active_type: "mvtec"
 
-# モデル設定
+# モデル
 model:
   type: "PaDiM"
-  types: ["PaDiM", "PatchCore", "FastFlow"]
   image_size: [256, 256]
   threshold: 0.5
 
-# モデル保存・管理設定
+# パス設定
 models:
   save_path: "./models/development"
   openvino_path: "./models/openvino"
-  export_path: "./models/export"
 
-# 学習設定
+# 学習
 training:
-  batch_size: 8
+  batch_size: 64
   epochs: 100
   learning_rate: 0.001
   device: "auto"
-  early_stopping_patience: 10
-  num_workers: 4
-  val_split_ratio: 0.2
-  optimizer: "adam"
-  weight_decay: 1e-5
-  lr_scheduler: "cosine"
-  lr_step_size: 30
-  lr_gamma: 0.1
-  mixed_precision: false
-  test_split_mode: "from_dir"
-  val_split_mode: "same_as_test"
 
-# 推論設定
+# 推論
 inference:
-  device: "GPU"
-  precision: "FP32"
-  batch_size: 1
+  processing_device: "CPU"
+  confidence_threshold: 0.5
+  auto_save_results: true
 
-# ログ設定
+# システム
 logging:
+  log_dir: "./logs"
   level: "INFO"
-  file_path: "./logs"
-  max_file_size_mb: 100
-  backup_count: 5
 
-# UI設定
 ui:
-  window_size: [1200, 800]
-  theme: "default"
-  auto_save: true
+  window_size:
+    width: 1200
+    height: 800
+
+app:
+  version: "1.0.0"

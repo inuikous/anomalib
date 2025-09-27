@@ -13,6 +13,8 @@ import tkinter as tk
 from tkinter import messagebox
 
 from shared.utils import setup_logger
+from shared.utils.file_utils import cleanup_openvino_cache_directories
+from shared.config.config_manager import ConfigManager
 from inference_app.gui.main_window import InferenceMainWindow
 from inference_app.core.image_manager import ImageManager
 from inference_app.core.anomaly_detector import AnomalyDetector
@@ -25,6 +27,9 @@ class InferenceApp:
     def __init__(self):
         """初期化"""
         self.logger = setup_logger("inference_app")
+        
+        # 設定管理
+        self.config_manager = ConfigManager()
         
         # GUI
         self.root = None
@@ -40,10 +45,15 @@ class InferenceApp:
     def setup_components(self):
         """コンポーネント初期化"""
         try:
+            # 既存のOpenVINOキャッシュディレクトリをクリーンアップ
+            deleted_count = cleanup_openvino_cache_directories()
+            if deleted_count > 0:
+                self.logger.info(f"既存OpenVINOキャッシュクリーンアップ: {deleted_count}個のディレクトリを削除")
+            
             # コアコンポーネント初期化
-            self.image_manager = ImageManager()
-            self.anomaly_detector = AnomalyDetector()
-            self.result_manager = ResultManager()
+            self.image_manager = ImageManager(self.config_manager)
+            self.anomaly_detector = AnomalyDetector(self.config_manager)
+            self.result_manager = ResultManager(self.config_manager)
             
             self.logger.info("推論アプリ初期化完了")
             
@@ -97,9 +107,19 @@ class InferenceApp:
 def main():
     """メイン関数"""
     try:
+        # OpenVINOキャッシュを完全に無効化（アプリ開始前）
+        import os
+        os.environ['OPENVINO_CACHE_MODE'] = 'NONE'
+        os.environ['OPENVINO_CACHE_DIR'] = ''
+        os.environ['INTEL_DEVICE_CACHE_DIR'] = ''
+        os.environ['GPU_CACHE_PATH'] = ''
+        # OpenVINOが内部で使用する可能性のある変数も無効化
+        os.environ['OV_CACHE_DIR'] = ''
+        
         # ログ設定
         logger = setup_logger("main")
         logger.info("=== 推論アプリケーション開始 ===")
+        logger.info("OpenVINOキャッシュ: 無効化済み")
         
         # アプリ実行
         app = InferenceApp()

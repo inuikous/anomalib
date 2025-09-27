@@ -13,6 +13,13 @@ if sys.platform.startswith('win'):
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
 os.environ['OMP_NUM_THREADS'] = '1'
 
+# OpenVINOキャッシュを完全に無効化
+os.environ['OPENVINO_CACHE_MODE'] = 'NONE'
+os.environ['OPENVINO_CACHE_DIR'] = ''
+os.environ['INTEL_DEVICE_CACHE_DIR'] = ''
+os.environ['GPU_CACHE_PATH'] = ''
+os.environ['OV_CACHE_DIR'] = ''
+
 # パス設定
 current_dir = Path(__file__).parent
 project_root = current_dir.parent
@@ -23,6 +30,7 @@ import tkinter as tk
 from tkinter import messagebox
 
 from shared.utils import setup_logger
+from shared.utils.file_utils import cleanup_openvino_cache_directories
 from training_app.gui.main_window import TrainingMainWindow
 from training_app.core.dataset_manager import DatasetManager
 from training_app.core.training_manager import TrainingManager
@@ -50,6 +58,11 @@ class TrainingApp:
     def setup_components(self):
         """コンポーネント初期化"""
         try:
+            # 既存のOpenVINOキャッシュディレクトリをクリーンアップ
+            deleted_count = cleanup_openvino_cache_directories()
+            if deleted_count > 0:
+                self.logger.info(f"既存OpenVINOキャッシュクリーンアップ: {deleted_count}個のディレクトリを削除")
+            
             # コアコンポーネント初期化
             self.dataset_manager = DatasetManager()
             self.training_manager = TrainingManager()

@@ -15,7 +15,7 @@ project_root = current_dir.parent.parent
 sys.path.insert(0, str(project_root))
 
 try:
-    from shared.domain.detection_result import DetectionResult
+    from shared.domain.result import DetectionResult
 except ImportError:
     # フォールバック用の簡易クラス
     class DetectionResult:
@@ -42,6 +42,9 @@ class ResultView:
         self.parent = parent
         self.logger = setup_logger("result_view")
         
+        # 外部依存
+        self.result_manager = None
+        
         # 表示状態
         self.current_result = None
         self.result_photo = None
@@ -66,6 +69,10 @@ class ResultView:
         
         # 初期状態
         self.show_no_result()
+    
+    def set_result_manager(self, result_manager):
+        """結果管理インスタンスを設定"""
+        self.result_manager = result_manager
     
     def setup_result_canvas(self):
         """結果画像キャンバス設定"""
@@ -156,53 +163,32 @@ class ResultView:
     def display_result_image(self, result: DetectionResult, original_image: Optional[np.ndarray] = None):
         """結果画像表示"""
         try:
-            # 結果画像作成
-            if original_image is not None and hasattr(result, 'anomaly_map') and result.anomaly_map is not None:
-                # 元画像に異常マップをオーバーレイ
-                result_image = self.create_overlay_image(original_image, result.anomaly_map, result.is_anomaly)
-            elif original_image is not None:
-                # 元画像のみ（判定結果をテキストで表示）
-                result_image = self.add_result_text(original_image, result.is_anomaly, result.anomaly_score)
-            else:
-                # 結果画像がない場合はプレースホルダー
-                result_image = self.create_result_placeholder(result.is_anomaly, result.anomaly_score)
+            # 結果プレースホルダー作成
+            result_image = self.create_result_placeholder(result.is_anomaly, result.confidence_score)
             
-            # PIL画像に変換して表示
-            if result_image.dtype == np.float32 or result_image.dtype == np.float64:
-                if result_image.max() <= 1.0:
-                    result_image = (result_image * 255).astype(np.uint8)
-                else:
-                    result_image = np.clip(result_image, 0, 255).astype(np.uint8)
-            
-            if len(result_image.shape) == 3:
-                pil_image = Image.fromarray(result_image, 'RGB')
-            else:
-                pil_image = Image.fromarray(result_image, 'L')
+            # PIL画像に変換
+            pil_image = Image.fromarray(result_image, 'RGB')
             
             # 表示サイズ調整
-            canvas_width = self.canvas.winfo_width()
-            canvas_height = self.canvas.winfo_height()
-            
-            if canvas_width > 1 and canvas_height > 1:
-                max_size = min(canvas_width - 20, canvas_height - 20, 400)
-                if max(pil_image.size) > max_size:
-                    ratio = max_size / max(pil_image.size)
-                    new_size = (int(pil_image.width * ratio), int(pil_image.height * ratio))
-                    pil_image = pil_image.resize(new_size, Image.Resampling.LANCZOS)
+            max_size = 300
+            if max(pil_image.size) > max_size:
+                ratio = max_size / max(pil_image.size)
+                new_size = (int(pil_image.width * ratio), int(pil_image.height * ratio))
+                pil_image = pil_image.resize(new_size, Image.Resampling.LANCZOS)
             
             # Tkinter用に変換
             self.result_photo = ImageTk.PhotoImage(pil_image)
             
             # キャンバス表示
             self.canvas.delete("all")
+            canvas_width = self.canvas.winfo_width() or 200
+            canvas_height = self.canvas.winfo_height() or 200
             self.canvas.create_image(
-                self.canvas.winfo_width() // 2,
-                self.canvas.winfo_height() // 2,
+                canvas_width // 2,
+                canvas_height // 2,
                 anchor=tk.CENTER,
                 image=self.result_photo
             )
-            
-            self.canvas.configure(scrollregion=self.canvas.bbox("all"))
             
         except Exception as e:
             self.logger.error(f"結果画像表示エラー: {e}")
@@ -400,3 +386,71 @@ class ResultView:
     def get_current_result(self) -> Optional[DetectionResult]:
         """現在の結果取得"""
         return self.current_result
+    
+    def create_result_placeholder(self, is_anomaly: bool, confidence_score: float) -> np.ndarray:
+        """結果プレースホルダー画像作成"""
+        try:
+            # 200x200の画像作成
+            width, height = 200, 200
+            image = np.ones((height, width, 3), dtype=np.uint8) * 255
+            
+            # 背景色設定
+            if is_anomaly:
+                color = (255, 200, 200)  # 薄い赤
+            else:
+                color = (200, 255, 200)  # 薄い緑
+            
+            image[:, :] = color
+            
+            # PIL Imageに変換してテキスト描画
+            pil_image = Image.fromarray(image)
+            draw = ImageDraw.Draw(pil_image)
+            
+            # テキスト描画
+            status_text = "異常" if is_anomaly else "正常"
+            confidence_text = f"{confidence_score*100:.1f}%"
+            
+            try:
+                # フォントサイズ調整
+                font_size = 24
+                draw.text((width//2, height//2-20), status_text, 
+                         fill=(0, 0, 0), anchor="mm", font_size=font_size)
+                draw.text((width//2, height//2+20), confidence_text, 
+                         fill=(0, 0, 0), anchor="mm", font_size=font_size-4)
+            except:
+                # フォント指定なしでテキスト描画
+                draw.text((width//2-30, height//2-10), status_text, fill=(0, 0, 0))
+                draw.text((width//2-20, height//2+10), confidence_text, fill=(0, 0, 0))
+            
+            return np.array(pil_image)
+            
+        except Exception as e:
+            self.logger.error(f"プレースホルダー作成エラー: {e}")
+            # フォールバック：単色画像
+            return np.ones((200, 200, 3), dtype=np.uint8) * 128
+    
+    def update_result_info(self, result: DetectionResult):
+        """結果情報更新"""
+        try:
+            # 判定結果
+            status_text = "異常" if result.is_anomaly else "正常"
+            color = "red" if result.is_anomaly else "green"
+            
+            self.judgment_var.set(status_text)
+            self.judgment_label.configure(foreground=color)
+            
+            # スコア
+            self.score_var.set(f"{result.confidence_score:.3f}")
+            
+            # 処理時間
+            self.inference_time_var.set(f"{result.processing_time_ms:.1f}ms")
+            
+            # JSON詳細
+            result_dict = result.to_dict()
+            json_text = json.dumps(result_dict, indent=2, ensure_ascii=False, default=str)
+            self.details_text.delete(1.0, tk.END)
+            self.details_text.insert(1.0, json_text)
+            
+        except Exception as e:
+            self.logger.error(f"結果情報更新エラー: {e}")
+            self.show_info_error()

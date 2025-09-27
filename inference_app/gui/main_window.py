@@ -151,7 +151,8 @@ class InferenceMainWindow:
         self.image_view.frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 5))
         
         # 右側：結果表示
-        self.result_view = ResultView(content_frame, self.result_manager)
+        self.result_view = ResultView(content_frame)
+        self.result_view.set_result_manager(self.result_manager)
         self.result_view.frame.pack(side=tk.RIGHT, fill=tk.Y, padx=(5, 0))
     
     def setup_status_frame(self, parent):
@@ -202,13 +203,18 @@ class InferenceMainWindow:
     def select_model(self):
         """モデル選択"""
         try:
+            # デフォルトディレクトリを設定
+            openvino_dir = self.config.get('models.openvino_path', './models/openvino')
+            if not Path(openvino_dir).exists():
+                openvino_dir = "."
+                
             file_path = filedialog.askopenfilename(
-                title="OpenVINOモデルファイルを選択",
+                title="OpenVINOモデルファイル(.xml)を選択",
+                initialdir=openvino_dir,
                 filetypes=[
                     ("OpenVINO IR", "*.xml"),
                     ("All files", "*.*")
-                ],
-                initialdir=self.config.get('models.openvino_path', '.')
+                ]
             )
             
             if file_path:
@@ -262,8 +268,14 @@ class InferenceMainWindow:
     def select_image(self):
         """画像選択"""
         try:
+            # デフォルトディレクトリをMVTecテストデータに設定
+            initial_dir = "./datasets/development/mvtec_anomaly_detection"
+            if not Path(initial_dir).exists():
+                initial_dir = "."
+            
             file_path = filedialog.askopenfilename(
                 title="画像ファイルを選択",
+                initialdir=initial_dir,
                 filetypes=[
                     ("画像ファイル", "*.png *.jpg *.jpeg *.bmp *.tiff *.tif"),
                     ("PNG", "*.png"),
